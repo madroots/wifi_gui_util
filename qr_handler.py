@@ -85,21 +85,37 @@ class QRHandler:
                 print(f"Error: Could not load image from {image_path}")
                 return None
                 
-            print("Image loaded successfully. Attempting to decode...")
+            print("Image loaded successfully. Attempting to decode with OpenCV QRCodeDetector...")
             
-            # Try to decode the original image
-            decoded_objects = pyzbar.decode(image)
-            print(f"Found {len(decoded_objects)} QR codes in original image")
-            for obj in decoded_objects:
-                data = obj.data.decode("utf-8")
+            # Create QR code detector
+            qrDecoder = cv2.QRCodeDetector()
+            
+            # Detect and decode
+            data, bbox, rectifiedImage = qrDecoder.detectAndDecode(image)
+            
+            if data:
                 print(f"Decoded data: {data}")
                 parsed_data = QRHandler._parse_wifi_qr_data(data)
                 if parsed_data:
                     print("Successfully parsed Wi-Fi QR code data")
                     return parsed_data
-                    
-            # If that fails, try some preprocessing techniques
-            print("Original image decoding failed. Trying preprocessing techniques...")
+            else:
+                print("No QR code detected with OpenCV QRCodeDetector")
+                
+            # If OpenCV's detector fails, try pyzbar as a fallback
+            print("OpenCV QRCodeDetector failed. Trying pyzbar as fallback...")
+            decoded_objects = pyzbar.decode(image)
+            print(f"Found {len(decoded_objects)} QR codes with pyzbar")
+            for obj in decoded_objects:
+                data = obj.data.decode("utf-8")
+                print(f"Decoded data: {data}")
+                parsed_data = QRHandler._parse_wifi_qr_data(data)
+                if parsed_data:
+                    print("Successfully parsed Wi-Fi QR code data with pyzbar")
+                    return parsed_data
+            
+            # If that fails, try some preprocessing techniques with pyzbar
+            print("pyzbar also failed. Trying preprocessing techniques with pyzbar...")
             
             # Convert to grayscale
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -182,6 +198,8 @@ class QRHandler:
             return None # No valid QR code found after all attempts
         except Exception as e:
             print(f"Error scanning QR code from image: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     @staticmethod
@@ -197,6 +215,16 @@ class QRHandler:
                           Wi-Fi QR code is found, otherwise None.
         """
         try:
+            # Try to decode with OpenCV QRCodeDetector first
+            qrDecoder = cv2.QRCodeDetector()
+            data, bbox, rectifiedImage = qrDecoder.detectAndDecode(frame)
+            
+            if data:
+                parsed_data = QRHandler._parse_wifi_qr_data(data)
+                if parsed_data:
+                    return parsed_data
+                    
+            # If OpenCV's detector fails, try pyzbar as a fallback
             # Try to decode the original frame
             decoded_objects = pyzbar.decode(frame)
             for obj in decoded_objects:
