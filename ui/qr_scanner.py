@@ -300,7 +300,7 @@ class QRScannerView(QWidget):
             return
             
         self.status_label.setText("Scanning loaded image...")
-        qr_data = QRHandler.scan_qr_from_frame(self.loaded_image) # Reuse the frame scanning logic
+        qr_data = QRHandler.scan_qr_from_image_data(self.loaded_image)
         if qr_data:
             self.display_scanned_qr(qr_data)
         else:

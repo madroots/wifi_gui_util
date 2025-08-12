@@ -1,6 +1,7 @@
 import qrcode
 import cv2
 from pyzbar import pyzbar
+import zxingcpp  # Add zxing-cpp import
 import re
 
 class QRHandler:
@@ -67,6 +68,99 @@ class QRHandler:
             return None
 
     @staticmethod
+    def scan_qr_from_image_data(image_data):
+        """
+        Scans a QR code from image data in memory.
+
+        Args:
+            image_data (numpy.ndarray): The image data.
+
+        Returns:
+            dict or None: A dictionary with 'ssid', 'password', 'security' if a valid
+                          Wi-Fi QR code is found, otherwise None.
+        """
+        try:
+            print("Attempting to decode image data with zxing-cpp...")
+            
+            # Convert BGR to RGB for zxing-cpp if needed
+            if len(image_data.shape) == 3 and image_data.shape[2] == 3:
+                image_rgb = cv2.cvtColor(image_data, cv2.COLOR_BGR2RGB)
+                print(f"Image converted to RGB. Shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
+            else:
+                image_rgb = image_data
+                print(f"Image is already in the correct format. Shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
+            
+            # Try to decode with zxing-cpp
+            results = zxingcpp.read_barcode(image_rgb)
+            print(f"zxing-cpp returned results: {results}")
+            
+            if results and results.text:
+                data = results.text
+                print(f"Decoded data with zxing-cpp: {data}")
+                parsed_data = QRHandler._parse_wifi_qr_data(data)
+                if parsed_data:
+                    print("Successfully parsed Wi-Fi QR code data with zxing-cpp")
+                    return parsed_data
+            else:
+                print("No QR code detected with zxing-cpp")
+                
+            # If zxing-cpp fails, try OpenCV QRCodeDetector as a fallback
+            print("zxing-cpp failed. Trying OpenCV QRCodeDetector...")
+            qrDecoder = cv2.QRCodeDetector()
+            data, bbox, rectifiedImage = qrDecoder.detectAndDecode(image_data)
+            
+            if data:
+                print(f"Decoded data with OpenCV QRCodeDetector: {data}")
+                parsed_data = QRHandler._parse_wifi_qr_data(data)
+                if parsed_data:
+                    print("Successfully parsed Wi-Fi QR code data with OpenCV QRCodeDetector")
+                    return parsed_data
+            else:
+                print("No QR code detected with OpenCV QRCodeDetector")
+                
+            # If OpenCV's detector fails, try pyzbar as a fallback
+            print("OpenCV QRCodeDetector failed. Trying pyzbar as fallback...")
+            decoded_objects = pyzbar.decode(image_data)
+            print(f"Found {len(decoded_objects)} QR codes with pyzbar")
+            for obj in decoded_objects:
+                data = obj.data.decode("utf-8")
+                print(f"Decoded data with pyzbar: {data}")
+                parsed_data = QRHandler._parse_wifi_qr_data(data)
+                if parsed_data:
+                    print("Successfully parsed Wi-Fi QR code data with pyzbar")
+                    return parsed_data
+            
+            # If that fails, try some preprocessing techniques with pyzbar
+            print("pyzbar also failed. Trying preprocessing techniques with pyzbar...")
+            
+            # Convert to grayscale if needed
+            if len(image_data.shape) == 3:
+                gray = cv2.cvtColor(image_data, cv2.COLOR_BGR2GRAY)
+                print(f"Image converted to grayscale. Shape: {gray.shape}, dtype: {gray.dtype}")
+            else:
+                gray = image_data
+                print(f"Image is already grayscale. Shape: {gray.shape}, dtype: {gray.dtype}")
+            
+            # Try decoding grayscale
+            decoded_objects = pyzbar.decode(gray)
+            print(f"Found {len(decoded_objects)} QR codes in grayscale image")
+            for obj in decoded_objects:
+                data = obj.data.decode("utf-8")
+                print(f"Decoded data from grayscale image: {data}")
+                parsed_data = QRHandler._parse_wifi_qr_data(data)
+                if parsed_data:
+                    print("Successfully parsed Wi-Fi QR code data from grayscale image")
+                    return parsed_data
+            
+            print("No valid QR code found after all attempts")
+            return None # No valid QR code found after all attempts
+        except Exception as e:
+            print(f"Error scanning QR code from image data: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    @staticmethod
     def scan_qr_from_image(image_path):
         """
         Scans a QR code from an image file.
@@ -80,122 +174,21 @@ class QRHandler:
         """
         try:
             print(f"Attempting to load image from {image_path}")
+            
+            # Try to decode with zxing-cpp first (most robust)
+            print("Attempting to decode with zxing-cpp...")
+            
+            # Read image with OpenCV
             image = cv2.imread(image_path)
             if image is None:
                 print(f"Error: Could not load image from {image_path}")
                 return None
-                
-            print("Image loaded successfully. Attempting to decode with OpenCV QRCodeDetector...")
             
-            # Create QR code detector
-            qrDecoder = cv2.QRCodeDetector()
+            print(f"Image loaded successfully. Shape: {image.shape}, dtype: {image.dtype}")
             
-            # Detect and decode
-            data, bbox, rectifiedImage = qrDecoder.detectAndDecode(image)
+            # Use the new method for scanning image data
+            return QRHandler.scan_qr_from_image_data(image)
             
-            if data:
-                print(f"Decoded data: {data}")
-                parsed_data = QRHandler._parse_wifi_qr_data(data)
-                if parsed_data:
-                    print("Successfully parsed Wi-Fi QR code data")
-                    return parsed_data
-            else:
-                print("No QR code detected with OpenCV QRCodeDetector")
-                
-            # If OpenCV's detector fails, try pyzbar as a fallback
-            print("OpenCV QRCodeDetector failed. Trying pyzbar as fallback...")
-            decoded_objects = pyzbar.decode(image)
-            print(f"Found {len(decoded_objects)} QR codes with pyzbar")
-            for obj in decoded_objects:
-                data = obj.data.decode("utf-8")
-                print(f"Decoded data: {data}")
-                parsed_data = QRHandler._parse_wifi_qr_data(data)
-                if parsed_data:
-                    print("Successfully parsed Wi-Fi QR code data with pyzbar")
-                    return parsed_data
-            
-            # If that fails, try some preprocessing techniques with pyzbar
-            print("pyzbar also failed. Trying preprocessing techniques with pyzbar...")
-            
-            # Convert to grayscale
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            
-            # Try decoding grayscale
-            decoded_objects = pyzbar.decode(gray)
-            print(f"Found {len(decoded_objects)} QR codes in grayscale image")
-            for obj in decoded_objects:
-                data = obj.data.decode("utf-8")
-                print(f"Decoded data: {data}")
-                parsed_data = QRHandler._parse_wifi_qr_data(data)
-                if parsed_data:
-                    print("Successfully parsed Wi-Fi QR code data from grayscale image")
-                    return parsed_data
-            
-            # Apply Gaussian blur to reduce noise
-            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-            
-            # Try decoding blurred image
-            decoded_objects = pyzbar.decode(blurred)
-            print(f"Found {len(decoded_objects)} QR codes in blurred image")
-            for obj in decoded_objects:
-                data = obj.data.decode("utf-8")
-                print(f"Decoded data: {data}")
-                parsed_data = QRHandler._parse_wifi_qr_data(data)
-                if parsed_data:
-                    print("Successfully parsed Wi-Fi QR code data from blurred image")
-                    return parsed_data
-            
-            # Apply threshold to get binary image
-            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            
-            # Try decoding thresholded image
-            decoded_objects = pyzbar.decode(thresh)
-            print(f"Found {len(decoded_objects)} QR codes in thresholded image")
-            for obj in decoded_objects:
-                data = obj.data.decode("utf-8")
-                print(f"Decoded data: {data}")
-                parsed_data = QRHandler._parse_wifi_qr_data(data)
-                if parsed_data:
-                    print("Successfully parsed Wi-Fi QR code data from thresholded image")
-                    return parsed_data
-            
-            # Try morphological operations to enhance QR code features
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-            morph = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-            
-            # Try decoding morphologically enhanced image
-            decoded_objects = pyzbar.decode(morph)
-            print(f"Found {len(decoded_objects)} QR codes in morphologically enhanced image")
-            for obj in decoded_objects:
-                data = obj.data.decode("utf-8")
-                print(f"Decoded data: {data}")
-                parsed_data = QRHandler._parse_wifi_qr_data(data)
-                if parsed_data:
-                    print("Successfully parsed Wi-Fi QR code data from morphologically enhanced image")
-                    return parsed_data
-            
-            # Try resizing the image to different scales
-            for scale in [0.5, 1.5, 2.0]:
-                width = int(image.shape[1] * scale)
-                height = int(image.shape[0] * scale)
-                dim = (width, height)
-                
-                # Resize image
-                resized = cv2.resize(image, dim, interpolation=cv2.INTER_AREA)
-                
-                # Try decoding resized image
-                decoded_objects = pyzbar.decode(resized)
-                print(f"Found {len(decoded_objects)} QR codes in resized image (scale: {scale})")
-                for obj in decoded_objects:
-                    data = obj.data.decode("utf-8")
-                    print(f"Decoded data: {data}")
-                    parsed_data = QRHandler._parse_wifi_qr_data(data)
-                    if parsed_data:
-                        print(f"Successfully parsed Wi-Fi QR code data from resized image (scale: {scale})")
-                        return parsed_data
-            
-            print("No valid QR code found after all attempts")
-            return None # No valid QR code found after all attempts
         except Exception as e:
             print(f"Error scanning QR code from image: {e}")
             import traceback
@@ -215,7 +208,18 @@ class QRHandler:
                           Wi-Fi QR code is found, otherwise None.
         """
         try:
-            # Try to decode with OpenCV QRCodeDetector first
+            # Try to decode with zxing-cpp first (most robust)
+            # Convert BGR to RGB for zxing-cpp
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = zxingcpp.read_barcode(frame_rgb)
+            
+            if results and results.text:
+                data = results.text
+                parsed_data = QRHandler._parse_wifi_qr_data(data)
+                if parsed_data:
+                    return parsed_data
+                    
+            # If zxing-cpp fails, try OpenCV QRCodeDetector as a fallback
             qrDecoder = cv2.QRCodeDetector()
             data, bbox, rectifiedImage = qrDecoder.detectAndDecode(frame)
             
@@ -318,22 +322,41 @@ class QRHandler:
                           conforms to the Wi-Fi QR code format, otherwise None.
         """
         # Match the Wi-Fi QR code format
-        # WIFI:T:(?P<security>.*?);S:(?P<ssid>.*?);P:(?P<password>.*?);; 
-        # This regex is a bit more flexible to handle potential variations
-        # It looks for T:, S:, P: fields and extracts their values up to the next semicolon
-        match = re.search(r'WIFI:T:(?P<security>[^;]*);S:(?P<ssid>[^;]*);P:(?P<password>[^;]*);', data)
-        if match:
-            security = match.group('security')
+        # The standard format is: WIFI:S:<SSID>;T:<WPA|WEP|nopass>;P:<PASSWORD>;H:<true|false|blank>;;
+        # But the fields can be in different orders, so we need to be flexible
+        # Let's extract each field separately
+        
+        # Extract SSID (S:)
+        ssid_match = re.search(r'S:([^;]*);', data)
+        ssid = ssid_match.group(1) if ssid_match else None
+        
+        # Extract security type (T:)
+        security_match = re.search(r'T:([^;]*);', data)
+        security = security_match.group(1) if security_match else None
+        
+        # Extract password (P:)
+        password_match = re.search(r'P:([^;]*);', data)
+        password = password_match.group(1) if password_match else ""
+        
+        # Extract hidden flag (H:) if present
+        hidden_match = re.search(r'H:([^;]*);', data)
+        hidden = hidden_match.group(1) if hidden_match else "false"
+        
+        if ssid and security:
             # Normalize security type
             if security.upper() in ["WPA2", "WPA3"]:
                 security = "WPA"  # Treat WPA2/WPA3 as WPA for simplicity in our app
+            elif security.upper() == "NOPASS":
+                password = ""  # No password for nopass
+                
             return {
-                'ssid': match.group('ssid'),
-                'password': match.group('password'),
+                'ssid': ssid,
+                'password': password,
                 'security': security
             }
+        
         # Handle 'nopass' networks or other variations if needed
-        # Example: WIFI:T:nopass;S:MyNetwork;P:;;
+        # Example: WIFI:T:nopass;S:MyNetwork;;
         match_nopass = re.search(r'WIFI:T:(?P<security>nopass);S:(?P<ssid>[^;]*);', data)
         if match_nopass:
              return {

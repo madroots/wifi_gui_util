@@ -10,5 +10,5 @@ fi
 # Get the directory where the script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
-# Run the application with pkexec, preserving environment variables for theme
-pkexec env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY QT_QPA_PLATFORMTHEME=$QT_QPA_PLATFORMTHEME GTK_THEME=$GTK_THEME python3 "$SCRIPT_DIR/main.py"
+# Run the application with pkexec, preserving environment variables for theme and Python path
+pkexec env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY QT_QPA_PLATFORMTHEME=$QT_QPA_PLATFORMTHEME GTK_THEME=$GTK_THEME PYTHONPATH="/home/master/.local/lib/python3.13/site-packages:$PYTHONPATH" python3 "$SCRIPT_DIR/main.py"
